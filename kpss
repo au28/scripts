@@ -1,0 +1,237 @@
+#!/bin/sh
+
+
+#Variables
+CUT="/usr/bin/cut"
+FIND="/usr/bin/find"
+GPG="/usr/bin/gpg"
+GPG_OPTS="--batch --quiet --yes --compress-algo=none --no-encrypt-to"
+GREP="/usr/bin/grep"
+HEAD="/usr/bin/head"
+MKDIR="/usr/bin/mkdir"
+NOTIFY="/usr/bin/notify-send"
+RAND="/dev/urandom"
+SED="/usr/bin/sed"
+SELECTION="/tmp/kpss.selection"
+TEE="/usr/bin/tee"
+TOFI="/usr/bin/tofi"
+TR="/usr/bin/tr"
+WTYPE="/usr/bin/wtype"
+
+#Functions
+generate_file()
+{
+  local file=""
+  local user=""
+  local pass=""
+  local pass_re=""
+  local length=""
+  local alpha=""
+  local num=""
+  local special=""
+  local extra=""
+  local char=""
+  local pass=""
+  local info=""
+  local content=""
+
+  file="${1}"
+  user="$("${TOFI}" --prompt-text "Username: " < /dev/null)"
+  pass="$("${TOFI}" --prompt-text "Password: " --hide-input true < /dev/null)"
+  if [ -n "${pass}" ]
+  then
+    pass_re="$("${TOFI}" --prompt-text "Password(Retype): " --hide-input true < /dev/null)"
+    if [ -n "${pass_re}" ]
+    then
+      return
+    fi
+  fi
+  if [ "${pass}" != "${pass_re}" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss" "Pass" "Passwords does not Match"
+    return
+  fi
+  if [ -n "${user}" ] && [ -z "${pass}" ]
+  then
+    length="$("${TOFI}" --prompt-text "Length: " < /dev/null)"
+    [ -z "${length}" ] && length="32"
+    alpha="$(printf 'yes\nno' | "${TOFI}" --require-match true --prompt-text "Alpahbets: " )"
+    num="$(printf 'yes\nno' | "${TOFI}" --require-match true --prompt-text "Numbers: " )"
+    special="$(printf 'yes\nno' | "${TOFI}" --require-match true --prompt-text "Special: " )"
+    extra="$("${TOFI}" --prompt-text "Extra: " < /dev/null)"
+    [ "${alpha}" = "yes" ] && char="[:alpha:]"
+    [ "${num}" = "yes" ] && char="${char}[:digit:]"
+    [ "${special}" = "yes" ] && char="${char}[:punct:]"
+    char="${char}${extra}"
+    [ -z "${char}" ] && char="[:alpha:][:digit:][:punct:]"
+    pass="$(generate_pass "${char}" "${length}")"
+  fi
+  info="$("${TOFI}" --prompt-text "Information: " < /dev/null)"
+  if [ -n "${user}" ]
+  then
+    content="$(printf 'user:%s\npass:%s\ninfo:%s\n' "${user}" "${pass}" "${info}")"
+  else
+    content="$(printf 'info:%s\n' "${info}")"
+  fi
+  if [ -n "${length}" ]
+  then
+    content="$(PATH="" printf '%s\nchar:%s\nlen:%s\n' "${content}" "${char}" "${length}")"
+  fi
+  "${MKDIR}" -p "${KPSS_DIR}/${file%/*}"
+  printf '%s\n' "${content}" | eval "${GPG}" "${GPG_OPTS}" --encrypt --recipient "${KPSS_KEY}" --output "${KPSS_DIR}/${file}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss-${file}" "Pass" "Created ${file}"
+}
+
+generate_pass()
+{
+  local characters=""
+  local length=""
+  local password=""
+
+  characters="${1}"
+  length="${2}"
+  password="$("${HEAD}" --lines 10000 "${RAND}" | "${TR}" -dc "${characters}" | "${CUT}" -c 101-"$(( 100 + length ))")"
+  printf '%s' "${password}"
+}
+
+output_info()
+{
+  local info=""
+  local file=""
+  local content=""
+
+  info="${1}"
+  read -r file < "${SELECTION}"
+  if [ -f "${KPSS_DIR}/${file}" ]
+  then
+    content="$(eval "${GPG}" "${GPG_OPTS}" --decrypt "${KPSS_DIR}/${file}" \| "${GREP}" "^${info}:")"
+    if [ -n "${content}" ]
+    then
+      printf '%s' "${content#"${info}:"}" | "${WTYPE}" -
+      "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss-${file}" "Pass" "Pasted ${info} for ${file}"
+    fi
+  fi
+}
+
+select_file()
+{
+  local file=""
+
+  file="$("${FIND}" "${KPSS_DIR}" -type f -printf '%P\n' | "${TOFI}" --require-match true --fuzzy-match true | "${TEE}" "${SELECTION}")"
+  if [ -n "${file}" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss-${file}" "Pass" "Selected ${file}"
+  fi
+}
+
+update_file()
+{
+  local file=""
+  local content=""
+  local user=""
+  local pass=""
+  local info=""
+  local char=""
+  local length=""
+  local newuser=""
+  local newpass=""
+  local newpass_re=""
+  local newinfo=""
+  local choice=""
+
+  file="${1}"
+  content="$(eval "${GPG}" "${GPG_OPTS}" --decrypt "${KPSS_DIR}/${file}")"
+  user="$(printf '%s\n' "${content}" | "${SED}" --quiet --expression "/^user:/{s|^user:||g;p}")"
+  pass="$(printf '%s\n' "${content}" | "${SED}" --quiet --expression "/^pass:/{s|^pass:||g;p}")"
+  info="$(printf '%s\n' "${content}" | "${SED}" --quiet --expression "/^info:/{s|^info:||g;p}")"
+  char="$(printf '%s\n' "${content}" | "${SED}" --quiet --expression "/^char:/{s|^char:||g;p}")"
+  length="$(printf '%s\n' "${content}" | "${SED}" --quiet --expression "/^len:/{s|^len:||g;p}")"
+  if [ "${2}" = "user" ]
+  then
+    newuser="$("${TOFI}" --prompt-text "Username: " < /dev/null)"
+    if [ -n "${newuser}" ]
+    then
+      user="${newuser}"
+    else
+      return
+    fi
+  elif [ "${2}" = "pass" ]
+  then
+    newpass="$("${TOFI}" --prompt-text "Password: " --hide-input true < /dev/null)"
+    if [ -n "${newpass}" ]
+    then
+      newpass_re="$("${TOFI}" --prompt-text "Password(Retype): " --hide-input true < /dev/null)"
+    else
+      return
+    fi
+    if [ -n "${newpass_re}" ]
+    then
+      if [ "${newpass}" = "${newpass_re}" ]
+      then
+        pass="${newpass}"
+      else
+        "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss" "Pass" "Passwords does not Match"
+        return
+      fi
+    else
+      return
+    fi
+  elif [ "${2}" = "info" ]
+  then
+    newinfo="$("${TOFI}" --prompt-text "Information: " < /dev/null)"
+    if [ "${newinfo}" = "nil" ]
+    then
+      info=""
+    elif [ -n "${newinfo}" ]
+    then
+      info="${newinfo}"
+    else
+      return
+    fi
+  else
+    choice="$(printf 'no\nyes' | "${TOFI}" --require-match true --prompt-text "Regenerate(yes/no): " )"
+    if [ "${choice}" = "yes" ]
+    then
+      if [ -n "${length}" ]
+      then
+        pass="$(generate_pass "${char}" "${length}")"
+      else
+        return
+      fi
+    else
+      return
+    fi
+  fi
+  content="$(printf 'user:%s\npass:%s\ninfo:%s\nchar:%s\nlen:%s\n' "${user}" "${pass}" "${info}" "${char}" "${length}")"
+  printf '%s\n' "${content}" | eval "${GPG}" "${GPG_OPTS}" --encrypt --recipient "${KPSS_KEY}" --output "${KPSS_DIR}/${file}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss-${file}" "Pass" "Updated ${file}"
+}
+
+update_pass()
+{
+  local file=""
+
+  file="$("${FIND}" "${KPSS_DIR}" -type f -printf '%P\n' | "${TOFI}" --require-match false --fuzzy-match false)"
+  if [ -f "${KPSS_DIR}/${file}" ]
+  then
+    update_file "${file}" "${1}"
+  else
+    if [ -n "${file}" ]
+    then
+      generate_file "${file}"
+    fi
+  fi
+  printf '%s\n' "${file}" > "${SELECTION}"
+}
+
+#Main
+export PATH=""
+if [ "${1}" = "update" ]
+then
+  update_pass "${2}"
+elif [ -n "${1}" ]
+then
+  output_info "${1}"
+else
+  select_file
+fi
