@@ -1,0 +1,84 @@
+#!/bin/sh
+
+
+#Variables
+FFMPEG="/usr/bin/ffmpeg -analyzeduration 6G -probesize 100MiB -hide_banner -loglevel info"
+FFPROBE="/usr/bin/ffprobe -analyzeduration 6G -probesize 100MiB -hide_banner -loglevel warning"
+JQ="/usr/bin/jq"
+NOTIFY="/usr/bin/notify-send"
+RM="/usr/bin/rm"
+WLPASTE="/usr/bin/wl-paste"
+YTDLP="/usr/bin/yt-dlp"
+
+#Functions
+download_audio()
+{
+  local url=""
+  local file=""
+  local codec=""
+  local arguments=""
+
+  url="$(${WLPASTE})"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn" "Downloads" "Fetching Audio Info"
+  file="$("${YTDLP}" --quiet --print "filename" --format "bestaudio" --output "%(id)s.%(ext)s" "${url}")"
+  if [ -z "${file}" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn" "Downloads" "Audio Download failed"
+    return
+  elif [ -f "${DOWNLOADS}/${file%.*}.opus" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn-${file}" "Downloads" "Downloaded Audio ${file%.*}.opus"
+    return
+  fi
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn-${file}" "Downloads" "Downloading Audio ${file%.*}.opus"
+  "${YTDLP}" --format "bestaudio" --paths "temp:/tmp" --paths "home:/tmp" --output "%(id)s.%(ext)s" "${url}"
+  if [ ! -f "/tmp/${file}" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn" "Downloads" "Audio Download failed"
+    return
+  fi
+  codec="$(eval "${FFPROBE}" -print_format "json" -show_streams "/tmp/${file}" \| "${JQ}" --raw-output ".streams[0][\\\"codec_name\\\"]")"
+  if [ "${codec}" = "opus" ]
+  then
+    arguments="-codec copy"
+  fi
+  eval "${FFMPEG}" -i "/tmp/${file}" "${arguments}" -y "${DOWNLOADS}/${file%.*}.opus"
+  "${RM}" --force "/tmp/${file}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn-${file}" "Downloads" "Downloaded Audio ${file%.*}.opus"
+}
+
+download_video()
+{
+  local url=""
+  local file=""
+
+  url="$(${WLPASTE})"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn" "Downloads" "Fetching Video Info"
+  file="$("${YTDLP}" --quiet --print "filename" --format "bestvideo*[height<=1080]+bestaudio/best[height<=1080]" --merge-output-format "mkv" --output "%(id)s.%(ext)s" "${url}")"
+  if [ -z "${file}" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn" "Downloads" "Video Download failed"
+    return
+  elif [ -f "${DOWNLOADS}/${file%.*}.mkv" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn-${file}" "Downloads" "Downloaded Video ${file%.*}.mkv"
+    return
+  fi
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn-${file}" "Downloads" "Downloading Video ${file%.*}.mkv"
+  "${YTDLP}" --format "bestvideo*[height<=1080]+bestaudio/best[height<=1080]" --merge-output-format "mkv" --paths "temp:/tmp" --paths "home:${DOWNLOADS}" --output "%(id)s.%(ext)s" "${url}"
+  if [ ! -f "${DOWNLOADS}/${file}" ]
+  then
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn" "Downloads" "Video Download failed"
+  else
+    "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kdwn-${file}" "Downloads" "Downloaded Video ${file%.*}.mkv"
+  fi
+}
+
+#Main
+if [ "${1}" = "video" ]
+then
+  download_video
+elif [ "${1}" = "audio" ]
+then
+  download_audio
+fi
