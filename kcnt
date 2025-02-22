@@ -1,0 +1,93 @@
+#!/bin/sh
+
+
+#Variables
+BLUETOOTHCTL="/usr/bin/bluetoothctl"
+FOOT="/usr/bin/foot"
+IWCTL="/usr/bin/iwctl"
+SED="/usr/bin/sed"
+TOFI="/usr/bin/tofi"
+
+#Functions
+bluetooth_connect()
+{
+  local devices=""
+  local connections=""
+  local device=""
+
+  "${BLUETOOTHCTL}" scan on
+  devices="$("${BLUETOOTHCTL}" devices Paired | "${SED}" --expression "s|^[^ ]\+ \([^ ]\+\) \([^ ]\+\)|\1(\2)|g")"
+  connections="$("${BLUETOOTHCTL}" devices Connected | "${SED}" --expression "s|^[^ ]\+ \([^ ]\+\) \([^ ]\+\)|\1(\2)|g")"
+  for i in ${connections}
+  do
+    devices="$(printf '%s\n' "${devices}" | eval "${SED}" --expression \"/"${i}"/d\")"
+  done
+  if [ -z "${devices}" ]
+  then
+    return
+  fi
+  device="$("${BLUETOOTHCTL}" devices Paired | "${SED}" --expression "s|^[^ ]\+ \([^ ]\+\) \([^ ]\+\)|\1(\2)|g" | "${TOFI}" --require-match true --fuzzy-match true)"
+  if [ -z "${device}" ]
+  then
+    return
+  fi
+  "${BLUETOOTHCTL}" connect "${device%%(*)}"
+}
+
+bluetooth_disconnect()
+{
+  local device=""
+
+  device="$("${BLUETOOTHCTL}" devices Connected | "${SED}" --expression "s|^[^ ]\+ \([^ ]\+\) \([^ ]\+\)|\1(\2)|g" | "${TOFI}" --require-match true --fuzzy-match true)"
+  if [ -z "${device}" ]
+  then
+    return
+  fi
+  "${BLUETOOTHCTL}" disconnect "${device%%(*)}"
+}
+
+wifi_connect()
+{
+  local device=""
+  local network=""
+
+  device=$("${IWCTL}" station list | "${SED}" --quiet --expression "5{s|\x1b\[[0-9;]\+m||g;s|^\s\+\([A-Za-z0-9]\+\).\+|\1|g;p}")
+  if [ -z "${device}" ]
+  then
+    return
+  fi
+  "${IWCTL}" station "${device}" scan
+  network=$("${IWCTL}" station "${device}" get-networks | "${SED}" --quiet --expression "5~1{s|\x1b\[[0-9;]\+m||g;/>/d;s|^\s\+||g;s|\s\{4\}.\+||g;p}" | "${TOFI}" --require-match true --fuzzy-match true)
+  if [ -z "${network}" ]
+  then
+    return
+  fi
+  "${FOOT}" --app-id "script_kcnt" --title "Wifi Connect" --window-size-pixels 795x395 "${IWCTL}" station "${device}" connect "${network}"
+}
+  
+wifi_disconnect()
+{
+  local network=""
+
+  network=$("${IWCTL}" known-networks list | "${SED}" --quiet --expression "5~1{s|\x1b\[[0-9;]\+m||g;/>/d;s|^\s\+||g;s|\s\{4\}.\+||g;p}" | "${TOFI}" --require-match true --fuzzy-match true)
+  if [ -z "${network}" ]
+  then
+    return
+  fi
+  "${IWCTL}" known-networks "${network}" forget
+}
+
+#Main
+if [ "${1}" = "wifi-connect" ]
+then
+  wifi_connect
+elif [ "${1}" = "wifi-disconnect" ]
+then
+  wifi_disconnect
+elif [ "${1}" = "bluetooth-connect" ]
+then
+  bluetooth_connect
+elif [ "${1}" = "bluetooth-disconnect" ]
+then
+  bluetooth_disconnect
+fi
