@@ -1,0 +1,117 @@
+#!/bin/sh
+
+
+#Variables
+CUT="/usr/bin/cut"
+DEVICEGRP="removable"
+DOAS="/usr/bin/doas"
+FSTAB="/tmp/kmnt.fstab"
+FUSERMOUNT="/usr/bin/fusermount"
+GREP="/usr/bin/grep"
+ID="/usr/bin/id"
+JMTPFS="/usr/bin/jmtpfs"
+LSBLK="/usr/bin/lsblk"
+MKDIR="/usr/bin/mkdir"
+MOUNT="/usr/bin/mount"
+MOUNTDIR="med"
+MTPDETECT="/usr/bin/mtp-detect"
+NOTIFY="/usr/bin/notify-send"
+RMDIR="/usr/bin/rmdir"
+SED="/usr/bin/sed"
+SORT="/usr/bin/sort"
+TOFI="/usr/bin/tofi"
+TR="/usr/bin/tr"
+UMOUNT="/usr/bin/umount"
+UNIQ="/usr/bin/uniq"
+
+#Functions
+mount_device()
+{
+  local perms=""
+  local usbs=""
+  local phones=""
+  local mtpmounts=""
+  local selection=""
+  local name=""
+  local mount=""
+  local device=""
+
+  if ( "${MTPDETECT}" | "${GREP}" --quiet --extended-regexp "^[0-9]+" )
+  then
+    perms="$(printf 'Allow Permissions on Phone\n' | "${TOFI}")"
+    if [ -z "${perms}" ]
+    then
+      return
+    fi
+  fi
+  usbs="$("${LSBLK}" --pairs --paths --output NAME,MOUNTPOINT,GROUP,SIZE | "${SED}" --quiet --expression "/NAME=\"\/dev\/[a-z]\+1\" MOUNTPOINT=\"\" GROUP=\"${DEVICEGRP}\"/{s|NAME=\"/dev/\([^\"]\+\)1.\+SIZE=\"\([^\"]\+\)\"|\1(\2)|g;p}")"
+  phones="$("${JMTPFS}" --listDevices | "${SED}" --quiet --expression "/^[0-9]/{s|^\([0-9]\+\), \([0-9]\+\), [^,]\+, [^,]\+, \(.\+\)|phone.\1.\2(\3)|g;p}" | "${SORT}" | "${UNIQ}")"
+  mtpmounts="$("${MOUNT}" --types fuse,fuse.jmtpfs | "${CUT}" -d' ' -f3)"
+  for i in ${mtpmounts}
+  do
+    phones="$(printf '%s\n' "${phones}" | eval "${SED}" --expression \"/"${i##*/}"/d\")"
+  done
+  if [ -n "${usbs}" ] || [ -n "${phones}" ]
+  then
+    selection="$(printf '%s\n%s\n' "${usbs}" "${phones}" | "${TOFI}" --require-match true --fuzzy-match true)"
+  else
+    return
+  fi
+  if [ -z "${selection}" ]
+  then
+    return
+  fi
+  name="${selection%%(*)}"
+  mount="${HOME}/${MOUNTDIR}/${name}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kmnt-${name}" "Storage" "Mounting ${name}"
+  printf '%s %s auto user,noauto,defaults,relatime,nodev,noexec,uid=%s,gid=%s,dmask=022,fmask=133 0 0\n' "/dev/${name}1" "${mount}" "$("${ID}" -u)" "$("${ID}" -g)" > "${FSTAB}"
+  "${MKDIR}" "${mount}"
+  if [ "${name%%"${name##phone}"}" = "phone" ]
+  then
+    device=$(printf '%s' "${name##phone.}" | "${TR}" '.' ',')
+    eval "${JMTPFS}" -device="${device}" "${mount}"
+  else
+    "${DOAS}" "${MOUNT}" --fstab "${FSTAB}" "${mount}"
+  fi
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kmnt-${name}" "Storage" "${name} mounted"
+}
+
+unmount_device()
+{
+  local usbs=""
+  local phones=""
+  local name=""
+  local mount=""
+
+  usbs="$("${MOUNT}" --types ntfs,vfat,fuseblk,fuse,fuse.jmtpfs | eval "${SED}" --quiet --expression \"/"${HOME##*/}\/${MOUNTDIR}\/sd"/'{'s\|^.\\\+"${HOME}/${MOUNTDIR}/"\\\(sd[^ ]\\\+\\\).\\\+\|\\\\1\|g\;p'}'\")"
+  phones="$("${MOUNT}" --types ntfs,vfat,fuseblk,fuse,fuse.jmtpfs | eval "${SED}" --quiet --expression \"/"${HOME##*/}\/${MOUNTDIR}\/phone"/'{'s\|^.\\\+"${HOME}/${MOUNTDIR}/"\\\(phone[^ ]\\\+\\\).\\\+\|\\\\1\|g\;p'}'\")"
+  if [ -n "${usbs}" ] || [ -n "${phones}" ]
+  then
+    name="$(printf '%s\n%s\n' "${usbs}" "${phones}" | "${TOFI}" --require-match true --fuzzy-match true)"
+  else
+    return
+  fi
+  if [ -z "${name}" ]
+  then
+    return
+  fi
+  mount="${HOME}/${MOUNTDIR}/${name}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kmnt-${name}" "Storage" "Unmounting ${name}"
+  if [ "${name%%"${name##phone}"}" = "phone" ]
+  then
+    "${FUSERMOUNT}" -u "${mount}"
+  else
+    "${DOAS}" "${UMOUNT}" "${mount}"
+  fi
+  "${RMDIR}" "${mount}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kmnt-${name}" "Storage" "${name} unmounted"
+}
+
+#Main
+if [ "${1}" = "mount" ]
+then
+  mount_device
+elif [ "${1}" = "unmount" ]
+then
+  unmount_device
+fi
