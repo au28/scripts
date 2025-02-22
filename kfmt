@@ -1,0 +1,81 @@
+#!/bin/sh
+
+
+#Variables
+DD="/usr/bin/dd"
+DEVICEGRP="removable"
+LSBLK="/usr/bin/lsblk"
+MKFS="/usr/bin/mkfs"
+NOTIFY="/usr/bin/notify-send"
+SED="/usr/bin/sed"
+SFDISK="/usr/bin/sfdisk"
+SLEEP="/usr/bin/sleep"
+TOFI="/usr/bin/tofi"
+
+#Functions
+fat_format()
+{
+  local device=""
+
+  device="${1}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kfmt-${device}" "Storage" "Formatting ${device} to FAT32"
+  "${DD}" if=/dev/zero of="${device}" bs=1K count=1
+  printf '%s' "label: dos" | "${SFDISK}" --wipe-partitions always --wipe always "${device}"
+  printf '%s' "- - 0b -" | "${SFDISK}" --wipe-partitions always --wipe always "${device}"
+  "${SLEEP}" 1
+  "${MKFS}" --type vfat "${device}1"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kfmt-${device}" "Storage" "${device} formatted as FAT32"
+}
+
+ntfs_format()
+{
+  local device=""
+
+  device="${1}"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kfmt-${device}" "Storage" "Formatting ${device} to NTFS"
+  "${DD}" if=/dev/zero of="${device}" bs=1K count=1
+  printf '%s' "label: dos" | "${SFDISK}" --wipe-partitions always --wipe always "${device}"
+  printf '%s' "- - 07 -" | "${SFDISK}" --wipe-partitions always --wipe always "${device}"
+  "${SLEEP}" 1
+  "${MKFS}" --type ntfs --quick "${device}1"
+  "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kfmt-${device}" "Storage" "${device} formatted as NTFS"
+}
+
+select_device()
+{
+  local usbs=""
+  local usbmounts=""
+  local selection=""
+
+  usbs="$("${LSBLK}" --pairs --paths --output NAME,MOUNTPOINT,GROUP,SIZE | "${SED}" --quiet --expression "/NAME=\"\/dev\/[a-z]\+\" MOUNTPOINT=\"\" GROUP=\"${DEVICEGRP}\"/{s|NAME=\"\(/dev/[^\"]\+\).\+SIZE=\"\([^\"]\+\)\"|\1(\2)|g;p}")"
+  usbmounts="$("${LSBLK}" --pairs --paths --output NAME,MOUNTPOINT | "${SED}" --quiet --expression "/${HOME##*/}/{s|NAME=\"\(/dev/[^\"]\+\)1.\+\"|\1|g;p}")"
+  for i in ${usbmounts}
+  do
+    usbs="$(printf '%s\n' "${usbs}" | eval "${SED}" --expression \"/"${i##*/}"/d\")"
+  done
+  if [ -n "${usbs}" ]
+  then
+    selection="$(printf '%s\n' "${usbs}" | "${TOFI}" --require-match true --fuzzy-match true)"
+  else
+    return
+  fi
+  if [ -z "${selection}" ]
+  then
+    return
+  fi
+  printf '%s' "${selection%%(*)}"
+}
+
+#Main
+device="$(select_device)"
+if [ -z "${device}" ]
+then
+  return
+fi
+if [ "${1}" = "fat" ]
+then
+  fat_format "${device}"
+elif [ "${1}" = "ntfs" ]
+then
+  ntfs_format "${device}"
+fi
