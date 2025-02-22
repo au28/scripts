@@ -1,0 +1,117 @@
+#!/bin/sh
+
+
+# Variables
+FFMPEG="/usr/bin/ffmpeg -analyzeduration 6G -probesize 100MiB -hide_banner -loglevel info"
+FFPROBE="/usr/bin/ffprobe -analyzeduration 6G -probesize 100MiB -hide_banner -loglevel warning"
+
+# Functions
+input_options()
+{
+  local file=""
+  local srtfile=""
+  local options=""
+
+  file="${1}"
+  srtfile="${2}"
+  options="-i ${file}"
+  if [ -n "${srtfile}" ]
+  then
+    options="${options} -i ${srtfile}"
+  fi
+  printf '%s' "${options}"
+}
+
+metadata_maps()
+{
+  local file="${1}"
+  local title="${2}"
+  local artist="${3}"
+  local album="${4}"
+  local album_artist="${5}"
+  local genre="${6}"
+  local language="${7}"
+  local metadata="-map_metadata -1"
+
+  case "${file}" in
+    *.flac | *.opus)
+      metadata="${metadata} -metadata title=\"${title}\""
+      metadata="${metadata} -metadata artist=\"${artist}\""
+      metadata="${metadata} -metadata album=\"${album}\""
+      metadata="${metadata} -metadata album_artist=\"${album_artist}\""
+      metadata="${metadata} -metadata genre=\"${genre}\""
+      metadata="${metadata} -metadata language=\"${language}\""
+      ;;
+    *)
+      metadata="${metadata} -metadata title=\"${title}\" -metadata:s:v title=\"${title}\" -metadata:s:a title=\"${title}\" -metadata:s:s title=\"${title}\""
+      metadata="${metadata} -metadata:s:a language=\"${language}\" -metadata:s:s language=\"English\""
+      ;;
+  esac
+
+  printf '%s' "${metadata}"
+}
+
+show_streams()
+{
+  local file="${1}"
+  eval "${FFPROBE}" -print_format compact=p=0:nk=1:s='\\\ ':e=none -show_entries stream=index,codec_long_name "${file}"
+}
+
+stream_maps()
+{
+  local streams="${1}"
+  local srtfile="${2}"
+  local mappings="-map_chapters -1"
+  for i in ${streams}
+  do
+    mappings="${mappings} -map 0:${i}"
+  done
+  if [ -n "${srtfile}" ]
+  then
+    mappings="${mappings} -map 1:s"
+  fi
+  printf '%s' "${mappings}"
+}
+
+# Main
+if [ -f "${1}" ]
+then
+  file="${1}"
+else
+  return
+fi
+if [ -f "${2}" ]
+then
+  srtfile="${2}"
+fi
+
+extension="${1##*.}"
+if [ "${extension}" != "flac" ] && [ "${extension}" != "opus" ]
+then
+  extension="mkv"
+fi
+
+printf 'Select the streams to include:\n'
+show_streams "${file}"
+read -r streams
+if [ -z "${streams}" ]
+then
+  return
+fi
+
+printf 'Title:' && read -r title
+printf 'Artist:' && read -r artist
+printf 'Album:' && read -r album
+printf 'Album Artist:' && read -r album_artist
+printf 'Genre:' && read -r genre
+printf 'Language:' && read -r language
+printf 'Filename:' && read -r filename
+if [ -z "${filename}" ]
+then
+  return
+fi
+
+inputs="$(input_options "${file}" "${srtfile}")"
+streams="$(stream_maps "${streams}" "${srtfile}")"
+metadata="$(metadata_maps "${file}" "${title}" "${artist}" "${album}" "${album_artist}" "${genre}" "${language}")"
+eval "${FFMPEG}" "${inputs}" "${streams}" "${metadata}" -codec copy -y "${filename}.${extension}"
