@@ -8,6 +8,8 @@ GPG="/usr/bin/gpg"
 GPG_OPTS="--batch --quiet --yes --compress-algo=none --no-encrypt-to"
 GREP="/usr/bin/grep"
 HEAD="/usr/bin/head"
+KPSS_DIR="${HOME}/src/pass"
+KPSS_KEY="5F48FC0A00DA717169ABF80E29A7C5C548EF4B92"
 MKDIR="/usr/bin/mkdir"
 NOTIFY="/usr/bin/notify-send"
 RAND="/dev/urandom"
@@ -41,7 +43,7 @@ generate_file()
   if [ -n "${pass}" ]
   then
     pass_re="$("${TOFI}" --prompt-text "Password(Retype): " --hide-input true < /dev/null)"
-    if [ -n "${pass_re}" ]
+    if [ -z "${pass_re}" ]
     then
       return
     fi

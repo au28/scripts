@@ -2,6 +2,7 @@
 
 
 #Variables
+DOWNLOADS="${HOME}/dl"
 FFMPEG="/usr/bin/ffmpeg -analyzeduration 6G -probesize 100MiB -hide_banner -loglevel info"
 FFPROBE="/usr/bin/ffprobe -analyzeduration 6G -probesize 100MiB -hide_banner -loglevel warning"
 JQ="/usr/bin/jq"
