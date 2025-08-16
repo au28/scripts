@@ -119,7 +119,7 @@ select_file()
 {
   local file=""
 
-  file="$("${FIND}" "${KPSS_DIR}" -type f -printf '%P\n' | "${TOFI}" --require-match true --fuzzy-match true | "${TEE}" "${SELECTION}")"
+  file="$("${FIND}" "${KPSS_DIR}" ! -path '*.git*' -type f -printf '%P\n' | "${TOFI}" --require-match true --fuzzy-match true | "${TEE}" "${SELECTION}")"
   if [ -n "${file}" ]
   then
     "${NOTIFY}" --hint "string:x-canonical-private-synchronous:tag-kpss-${file}" "Pass" "Selected ${file}"
@@ -213,7 +213,7 @@ update_pass()
 {
   local file=""
 
-  file="$("${FIND}" "${KPSS_DIR}" -type f -printf '%P\n' | "${TOFI}" --require-match false --fuzzy-match false)"
+  file="$("${FIND}" "${KPSS_DIR}" ! -path '*.git*' -type f -printf '%P\n' | "${TOFI}" --require-match false --fuzzy-match false)"
   if [ -f "${KPSS_DIR}/${file}" ]
   then
     update_file "${file}" "${1}"
