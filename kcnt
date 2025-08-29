@@ -26,7 +26,7 @@ bluetooth_connect()
   then
     return
   fi
-  device="$("${BLUETOOTHCTL}" devices Paired | "${SED}" --expression "s|^[^ ]\+ \([^ ]\+\) \([^ ]\+\)|\1(\2)|g" | "${TOFI}" --require-match true --fuzzy-match true)"
+  device="$(printf '%s\n' "${devices}" | "${TOFI}" --require-match true --fuzzy-match true)"
   if [ -z "${device}" ]
   then
     return
