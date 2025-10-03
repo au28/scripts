@@ -50,6 +50,7 @@ wifi_connect()
 {
   local device=""
   local network=""
+  local password_prompt_size="${1}"
 
   device=$("${IWCTL}" station list | "${SED}" --quiet --expression "5{s|\x1b\[[0-9;]\+m||g;s|^\s\+\([A-Za-z0-9]\+\).\+|\1|g;p}")
   if [ -z "${device}" ]
@@ -62,7 +63,7 @@ wifi_connect()
   then
     return
   fi
-  "${FOOT}" --app-id "script_kcnt" --title "Wifi Connect" --window-size-pixels 795x395 "${IWCTL}" station "${device}" connect "${network}"
+  "${FOOT}" --app-id "script.kcnt" --title "Wifi Connect" --window-size-pixels "${password_prompt_size}" "${IWCTL}" station "${device}" connect "${network}"
 }
   
 wifi_disconnect()
@@ -80,7 +81,7 @@ wifi_disconnect()
 #Main
 if [ "${1}" = "wifi-connect" ]
 then
-  wifi_connect
+  wifi_connect "${2}"
 elif [ "${1}" = "wifi-disconnect" ]
 then
   wifi_disconnect
