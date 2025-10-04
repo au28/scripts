@@ -1,0 +1,25 @@
+#!/bin/sh
+#shellcheck disable=SC3043
+
+
+#Variables
+CACHEDIR="${XDG_CACHE_HOME}/keph"
+CHROMIUMDIR="${XDG_CONFIG_HOME}/chromium"
+CP="/usr/bin/cp"
+FIND="/usr/bin/find"
+LN="/usr/bin/ln"
+MKDIR="/usr/bin/mkdir"
+RM="/usr/bin/rm"
+SHELL="/bin/sh"
+
+# Main
+cd "${CHROMIUMDIR}" || return
+mkdir_command="${MKDIR} --parents ${CACHEDIR}/\{\}"
+copy_command="${CP} --recursive \{\} ${CACHEDIR}/\{\}/.."
+"${FIND}" . -type d -a -path "*/blob_storage" -a ! \( -path "*/Trash" -o -path "*/.Trash-*" \) -exec "${SHELL}" -c "${FIND} \"{}/..\" -maxdepth 1 -type d -name \*Cache -exec ${mkdir_command} \;" \;
+"${FIND}" . -type d -a -path "*/blob_storage" -a ! \( -path "*/Trash" -o -path "*/.Trash-*" \) -exec "${SHELL}" -c "${FIND} \"{}/..\" -maxdepth 1 -type d -name \*Cache -exec ${copy_command} \;" \;
+"${FIND}" . -maxdepth 1 -type d -a -path "*Cache" -exec "${MKDIR}" --parents "${CACHEDIR}"/{} \;
+"${FIND}" . -maxdepth 1 -type d -a -path "*Cache" -exec "${CP}" --recursive {} "${CACHEDIR}"/{}/.. \;
+cd "${CACHEDIR}" || return
+"${FIND}" . -type d -a -name "*Cache" -exec "${RM}" --recursive "${CHROMIUMDIR}"/{} \;
+"${FIND}" . -type d -a -name "*Cache" -exec "${LN}" --symbolic "${CACHEDIR}"/{} "${CHROMIUMDIR}"/{} \;
