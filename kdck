@@ -1,0 +1,52 @@
+#!/bin/sh
+#shellcheck disable=SC3043
+
+
+#Variables
+DOCKERD="/usr/bin/dockerd"
+ETC="/etc"
+ETCCDI="${ETC}/cdi"
+MKDIR="/usr/bin/mkdir"
+MOUNT="/usr/bin/mount"
+OPT="/opt"
+PROPAGATION="rslave"
+REALPATH="/usr/bin/realpath"
+RM="/usr/bin/rm"
+ROOTLESSKIT="/usr/bin/rootlesskit"
+RUN="/run"
+SSL="${ETC}/ssl"
+STATEDIR="${XDG_RUNTIME_DIR}/docker"
+VARCDI="/var/run/cdi"
+
+#Functions
+mount_dir()
+{
+  local options=""
+  local directory=""
+  local path=""
+
+  options="${1}"
+  directory="${2}"
+  path="$("${REALPATH}" "${directory}")"
+
+  if [ ! -d "${directory}" ]
+  then
+    return
+  fi
+
+  "${RM}" -rf "${directory}"
+  "${MKDIR}" -p "${directory}"
+  "${MOUNT}" "${options}" "${path}" "${directory}"
+}
+
+#Main
+id="$(id -u)"
+if [ "${id}" -gt 0 ]
+then
+  "${ROOTLESSKIT}" --state-dir="${STATEDIR}" --net=slirp4netns --mtu=65520 --slirp4netns-sandbox=auto --slirp4netns-seccomp=auto --disable-host-loopback --port-driver=builtin --copy-up="${ETC}" --copy-up="${OPT}" --copy-up="${RUN}" --propagation="${PROPAGATION}" "${0}"
+else
+  mount_dir "--bind" "${ETCCDI}"
+  mount_dir "--bind" "${VARCDI}"
+  mount_dir "--rbind" "${SSL}"
+  exec "${DOCKERD}"
+fi
