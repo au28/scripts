@@ -79,7 +79,7 @@ generate_pass()
   extra="$(printf 'Yes\nNo' | "${TOFI}" --prompt-text "Special: " )"
   [ "${alpha}" = "Yes" ] && char="[:alpha:]"
   [ "${num}" = "Yes" ] && char="${char}[:digit:]"
-  [ "${extra}" = "Yes" ] && extra="[:punct:]"
+  [ "${extra}" = "Yes" ] && extra="!@#$%^&*()-_=+"
   [ "${extra}" = "No" ] && extra=""
   char="${char}${extra}"
   [ -z "${char}" ] && char="[:alpha:][:digit:][:punct:]"
@@ -142,7 +142,7 @@ random_pass()
 
   char="${1}"
   len="${2}"
-  pass="$("${HEAD}" --lines 100000 "${RAND}" | "${TR}" -dc "${char}" | "${CUT}" -c 101-"$(( 100 + len ))")"
+  pass="$("${HEAD}" --lines 100000 "${RAND}" | "${TR}" --delete --complement "${char}" | "${CUT}" --characters 101-"$(( 100 + len ))")"
   pass="$(PATH="" printf 'pass:%s\nchar:%s\nlen:%s\n' "${pass}" "${char}" "${len}")"
   PATH="" printf '%s' "${pass}"
 }
